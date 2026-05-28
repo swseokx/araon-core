@@ -11,6 +11,7 @@ setup_log/
 admission_log/
 chrome_kakao_profile/
 __pycache__/
+*.egg-info/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
@@ -23,6 +24,7 @@ launcher.log
 dist/
 build/
 release/
+package/
 ARAON_v*/
 ARAON_v*.zip
 *.exe
