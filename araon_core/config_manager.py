@@ -47,52 +47,31 @@ class ConfigManager:
                 'hotkey': 'F4',
                 'appearance_mode': 'dark',
                 'popup_topmost': 'False',
-                'kakao_rate': '500',
-                'setup_rate': '3000',
             }
-            self.config['AS_TEMPLATES'] = {
-                'list': '장비교체 완료,현장점검 완료,배선 재연결,신호 불량 조치'
-            }
-            self.config['COPY_BUTTONS'] = {}
-            for i in range(1, 16):
-                self.config['COPY_BUTTONS'][f'btn_{i}_title'] = f'업무 {i}'
-                self.config['COPY_BUTTONS'][f'btn_{i}_text'] = ''
-            self.config['KAKAO_STATS'] = {}
             if not self.config.has_section('COMPANY_SITE'):
                 self.config.add_section('COMPANY_SITE')
-            self.save()
+            self._ensure_sections()
+            return
         else:
             self.config.read(self.config_path, encoding='utf-8')
             self._ensure_sections()
 
     def _ensure_sections(self):
-        for section in ['MAIN_SHEET', 'KAKAO_STATS', 'SETTINGS', 'AS_TEMPLATES',
-                        'COPY_BUTTONS', 'COMPANY_SITE', 'LMS', 'UPDATE', 'ADMISSION',
-                        'KAKAO_COORDS']:
+        for section in ['MAIN_SHEET', 'SETTINGS', 'COMPANY_SITE', 'LMS', 'UPDATE']:
             if not self.config.has_section(section):
                 self.config.add_section(section)
-        # 카톡 매크로 좌표 모드 기본값
-        if not self.config.has_option('SETTINGS', 'kakao_macro_mode'):
-            self.config.set('SETTINGS', 'kakao_macro_mode', 'coords')
-        for k, v in [('send_x', '0'), ('send_y', '0'),
-                     ('now_x', '0'), ('now_y', '0'),
-                     ('complete_x', '0'), ('complete_y', '0'),
-                     ('ok_x', '0'), ('ok_y', '0')]:
-            if not self.config.has_option('KAKAO_COORDS', k):
-                self.config.set('KAKAO_COORDS', k, v)
-        # 단가 키 신규 추가 (기존 파일 호환)
-        if not self.config.has_option('SETTINGS', 'kakao_rate'):
-            self.config.set('SETTINGS', 'kakao_rate', '500')
-        if not self.config.has_option('SETTINGS', 'setup_rate'):
-            self.config.set('SETTINGS', 'setup_rate', '3000')
-        if not self.config.has_option('SETTINGS', 'kakao_confidence'):
-            self.config.set('SETTINGS', 'kakao_confidence', '0.6')
-        # 자동업데이트 기본값 (기존 파일 호환)
-        _CORRECT_REPO = 'swseokx/araon-management'
+        if self.config.has_section('KAKAO_COORDS'):
+            for k, v in [('send_x', '0'), ('send_y', '0'),
+                         ('now_x', '0'), ('now_y', '0'),
+                         ('complete_x', '0'), ('complete_y', '0'),
+                         ('ok_x', '0'), ('ok_y', '0')]:
+                if not self.config.has_option('KAKAO_COORDS', k):
+                    self.config.set('KAKAO_COORDS', k, v)
+        # 자동업데이트 repo는 앱별 settings.ini.template 값이 기준이다.
+        # 공통 코어에서 특정 앱 저장소로 강제 교정하지 않는다.
         current_repo = self.config.get('UPDATE', 'repo', fallback='').strip()
-        # 비어있거나 구버전 잘못된 값(ARAONManagement)이면 올바른 값으로 교정
-        if not current_repo or current_repo.lower().replace('-', '') == 'swseokx/araonmanagement':
-            self.config.set('UPDATE', 'repo', _CORRECT_REPO)
+        if current_repo.lower().replace('-', '') == 'swseokx/araonmanagement':
+            self.config.set('UPDATE', 'repo', 'swseokx/araon-management')
         if not self.config.has_option('UPDATE', 'token'):
             self.config.set('UPDATE', 'token', '')
         # v4.8.0: popup_topmost 기본값 True → False 마이그레이션
