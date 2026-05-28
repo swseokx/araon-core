@@ -1,0 +1,40 @@
+# Copyright (c) 2026 swseokx. All rights reserved.
+
+# ── 민감 정보 (절대 커밋 금지) ──────────────────────────────
+credentials.json
+settings.ini
+lms_cache.json
+
+# ── 로그 / 캐시 ──────────────────────────────────────────────
+log/
+setup_log/
+admission_log/
+chrome_kakao_profile/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+launcher.log
+*.pyc
+*.pyo
+*.pyd
+
+# ── PyInstaller 빌드 결과물 ───────────────────────────────────
+dist/
+build/
+release/
+ARAON_v*/
+ARAON_v*.zip
+*.exe
+_ver.tmp
+
+# ── Python 가상환경 ───────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── 기타 ─────────────────────────────────────────────────────
+.claude/settings.local.json
+*.log
+.DS_Store
+Thumbs.db
