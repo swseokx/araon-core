@@ -5,7 +5,6 @@ Shared runtime library for ARAON desktop tools.
 This repository is used by:
 
 - ARAON Setup
-- ARAON Orientation
 
 ## Scope
 
@@ -27,4 +26,3 @@ Business-specific workflow code should stay in the app repositories.
 ```bat
 python -m pip install git+https://github.com/swseokx/araon-core.git@v1.0.0
 ```
-

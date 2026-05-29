@@ -18,7 +18,7 @@ class LogManager:
 
     def __init__(self, base_path: str):
         self.base_path = base_path
-        for folder in ('log', 'setup_log', 'admission_log'):
+        for folder in ('log', 'setup_log'):
             os.makedirs(os.path.join(base_path, folder), exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -73,28 +73,3 @@ class LogManager:
         except OSError as e:
             self.write_system(f'셋업 로그 쓰기 실패: {e}')
 
-    # ------------------------------------------------------------------
-    # 입학식 로그
-    # ------------------------------------------------------------------
-    def write_admission(self, ot_time: str, name: str, checklist_str: str,
-                        lms_ok: bool, sheet_ok: bool):
-        """
-        입학식 OT 처리 결과를 admission_log/admission_YYYY-MM-DD.log 에 기록.
-        checklist_str: 예) '카톡O/레벨O/노트X/첫수업4/14/폼O/시간표O/배정X'
-        """
-        now = datetime.now()
-        lms_tag   = 'LMS✓' if lms_ok   else 'LMS✗'
-        sheet_tag = '시트✓' if sheet_ok else '시트✗'
-        entry = (
-            f"[{now.strftime('%H:%M:%S')}][입학식][{ot_time}] {name} "
-            f"| {checklist_str} | {lms_tag} {sheet_tag}\n"
-        )
-        log_path = os.path.join(
-            self.base_path, 'admission_log',
-            f"admission_{now.strftime('%Y-%m-%d')}.log"
-        )
-        try:
-            with open(log_path, 'a+', encoding='utf-8') as f:
-                f.write(entry)
-        except OSError as e:
-            self.write_system(f'입학식 로그 쓰기 실패: {e}')
