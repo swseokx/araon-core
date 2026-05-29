@@ -12,7 +12,13 @@ araon_core 패키지.
 
 from importlib import import_module
 
-__all__ = ['ConfigManager', 'LogManager', 'SheetManager', 'SeleniumManager']
+__all__ = [
+    'ConfigManager',
+    'LogManager',
+    'SheetManager',
+    'SeleniumManager',
+    'PlaywrightManager',
+]
 
 # eager 시도 — 성공 시 PyInstaller 정적 분석이 서브모듈을 잡아서 번들에 포함됨
 try:
@@ -20,6 +26,7 @@ try:
     from .log_manager import LogManager                # noqa: F401
     from .sheet_manager import SheetManager            # noqa: F401
     from .selenium_manager import SeleniumManager      # noqa: F401
+    from .playwright_manager import PlaywrightManager  # noqa: F401
 except ImportError:
     # launcher 등 일부 의존성 제외 빌드에선 실패할 수 있음 → lazy fallback
     pass
@@ -30,6 +37,7 @@ _LAZY_MAP = {
     'LogManager':      '.log_manager',
     'SheetManager':    '.sheet_manager',
     'SeleniumManager': '.selenium_manager',
+    'PlaywrightManager': '.playwright_manager',
 }
 
 
