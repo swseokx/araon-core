@@ -22,7 +22,7 @@ class ConfigManager:
     def __init__(self, base_path: str):
         self.base_path = base_path
         self.config_path = os.path.join(base_path, 'settings.ini')
-        self.config = configparser.ConfigParser()
+        self.config = configparser.ConfigParser(interpolation=None)
         self._init_config()
 
     def _init_config(self):

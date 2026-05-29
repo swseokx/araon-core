@@ -3,9 +3,6 @@
 """
 araon_core/playwright_manager.py
 LMS 작업용 Playwright 세션 래퍼.
-
-Selenium 경로를 제거하지 않고 병행 적용하기 위한 최소 계층이다.
-브라우저 설치/런타임 문제가 있으면 호출 측에서 Selenium fallback 을 탄다.
 """
 
 from __future__ import annotations
@@ -62,6 +59,17 @@ def extract_member_ref(raw: str) -> dict[str, str] | None:
     }
 
 
+def _playwright_launch_error_message(exc: Exception) -> str:
+    msg = str(exc)
+    if 'Executable doesn' in msg or 'playwright install' in msg.lower():
+        return (
+            'Playwright Chromium 브라우저가 설치되어 있지 않습니다. '
+            '프로그램 설치/빌드 단계에서 `python -m playwright install chromium`을 '
+            '실행하거나 브라우저 번들을 포함해야 합니다.'
+        )
+    return msg
+
+
 @dataclass
 class PlaywrightLmsSession:
     """단일 LMS 브라우저 세션."""
@@ -86,22 +94,26 @@ class PlaywrightLmsSession:
                 'Playwright 패키지가 설치되어 있지 않습니다.'
             ) from exc
 
-        self._pw = sync_playwright().start()
-        launch_args = ['--disable-popup-blocking']
-        if self.background:
-            launch_args.append('--window-position=-32000,-32000')
-        self.browser = self._pw.chromium.launch(
-            headless=self.headless,
-            args=launch_args,
-        )
-        self.context = self.browser.new_context(
-            viewport=None,
-            ignore_https_errors=True,
-        )
-        self.context.on('dialog', lambda dialog: dialog.accept())
-        self.page = self.context.new_page()
-        self.page.set_default_timeout(self.timeout_ms)
-        return self
+        try:
+            self._pw = sync_playwright().start()
+            launch_args = ['--disable-popup-blocking']
+            if self.background:
+                launch_args.append('--window-position=-32000,-32000')
+            self.browser = self._pw.chromium.launch(
+                headless=self.headless,
+                args=launch_args,
+            )
+            self.context = self.browser.new_context(
+                viewport=None,
+                ignore_https_errors=True,
+            )
+            self.context.on('dialog', lambda dialog: dialog.accept())
+            self.page = self.context.new_page()
+            self.page.set_default_timeout(self.timeout_ms)
+            return self
+        except Exception as exc:
+            self.close()
+            raise RuntimeError(_playwright_launch_error_message(exc)) from exc
 
     def login(self) -> None:
         page = self._require_page()
@@ -109,7 +121,18 @@ class PlaywrightLmsSession:
         page.locator('#user_id').fill(self.lms_id)
         page.locator('#user_pw').fill(self.lms_pw)
         page.locator('.loginBtn a').click()
-        page.wait_for_url(re.compile(r'.*wcms.*'), timeout=self.timeout_ms)
+        page.wait_for_function(
+            """() => {
+                const userId = document.querySelector('#user_id');
+                const authedMarker = document.querySelector(
+                    "a[href*='logout'], .logout, input[name='keyword'], input[name='keyWord']"
+                );
+                return !userId || !!authedMarker;
+            }""",
+            timeout=self.timeout_ms,
+        )
+        if page.locator('#user_id').count() > 0:
+            raise RuntimeError('LMS 로그인에 실패했습니다. 계정 정보를 확인해주세요.')
 
     def search_student_ref(self, name: str) -> dict[str, str] | None:
         page = self._require_page()
@@ -227,6 +250,46 @@ class PlaywrightLmsSession:
         frame = self._detail_frame()
         if frame is None:
             return False
+        try:
+            result = frame.evaluate(
+                """(text) => {
+                    const qna = document.querySelector('#qna_content');
+                    if (!qna) return 'NO_QNA';
+                    qna.value = text;
+                    qna.dispatchEvent(new Event('input', { bubbles: true }));
+                    qna.dispatchEvent(new Event('change', { bubbles: true }));
+
+                    const selects = {
+                        incall_gb: '417',
+                        qna_gb: 'etc',
+                        call_gb: '903',
+                    };
+                    for (const [id, value] of Object.entries(selects)) {
+                        const el = document.getElementById(id);
+                        if (!el) continue;
+                        const hasValue = Array.from(el.options || []).some(opt => opt.value === value);
+                        if (hasValue) {
+                            el.value = value;
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+
+                    const root = qna.closest('form') || document;
+                    const buttons = Array.from(root.querySelectorAll('input, button'))
+                        .filter(el => ((el.value || el.textContent || '').trim() === '저장'));
+                    const btn = buttons.find(el => (el.className || '').includes('button2g')) || buttons[0];
+                    if (!btn) return 'NO_SAVE_BUTTON';
+                    btn.click();
+                    return 'OK';
+                }""",
+                text,
+            )
+            if result != 'OK':
+                return False
+            self._require_page().wait_for_timeout(1200)
+            return True
+        except Exception:
+            return False
 
     def get_member_gb(self) -> str:
         frame = self._detail_frame()
@@ -252,36 +315,40 @@ class PlaywrightLmsSession:
         if frame is None:
             return False
         try:
-            attend = frame.locator('#attend_yn').first
-            if attend.count() > 0 and not attend.is_checked():
-                attend.click()
-            frame.evaluate(
+            result = frame.evaluate(
                 """([sdate, edate]) => {
+                    const cb = document.getElementById('attend_yn');
+                    if (cb && !cb.checked) cb.click();
                     const s = document.getElementsByName('attend_Sdate');
-                    if (s.length) s[0].value = sdate;
+                    if (s.length) {
+                        s[0].value = sdate;
+                        s[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    }
                     const e = document.getElementsByName('attend_Edate');
-                    if (e.length) e[0].value = edate;
+                    if (e.length) {
+                        e[0].value = edate;
+                        e[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    const save =
+                        document.querySelector("input[type='button'][name='학생정보저장']") ||
+                        Array.from(document.querySelectorAll('input, button')).find(
+                            el => ((el.name || el.value || el.textContent || '').trim() === '학생정보저장')
+                        );
+                    if (save) {
+                        save.click();
+                        return 'OK';
+                    }
+                    if (typeof Submit === 'function') {
+                        Submit();
+                        return 'OK';
+                    }
+                    return 'NO_SAVE_BUTTON';
                 }""",
                 [sdate, edate],
             )
-            try:
-                frame.locator("input[type='button'][name='학생정보저장']").first.click()
-            except Exception:
-                frame.evaluate("() => { if (typeof Submit === 'function') Submit(); }")
-            self._require_page().wait_for_timeout(700)
-            return True
-        except Exception:
-            return False
-        try:
-            frame.locator('#qna_content').fill(text)
-            for selector, value in [
-                ('#incall_gb', '417'),
-                ('#qna_gb', 'etc'),
-                ('#call_gb', '903'),
-            ]:
-                frame.locator(selector).select_option(value=value)
-            frame.locator("input.button2g[value='저장']").click()
-            self._require_page().wait_for_timeout(700)
+            if result != 'OK':
+                return False
+            self._require_page().wait_for_timeout(1200)
             return True
         except Exception:
             return False
@@ -378,8 +445,12 @@ class PlaywrightManager:
             background=background,
             timeout_ms=timeout_ms,
         ).start()
-        session.login()
-        return session
+        try:
+            session.login()
+            return session
+        except Exception:
+            session.close()
+            raise
 
     @staticmethod
     def create_browser_session(
@@ -394,26 +465,40 @@ class PlaywrightManager:
         except ImportError as exc:
             raise RuntimeError('Playwright 패키지가 설치되어 있지 않습니다.') from exc
 
-        pw = sync_playwright().start()
-        args = ['--disable-popup-blocking']
-        if background:
-            args.append('--window-position=-32000,-32000')
-        if user_data_dir:
-            context = pw.chromium.launch_persistent_context(
-                user_data_dir,
-                headless=headless,
-                args=args,
-                viewport=None,
-                ignore_https_errors=True,
+        pw = None
+        browser = None
+        context = None
+        try:
+            pw = sync_playwright().start()
+            args = ['--disable-popup-blocking']
+            if background:
+                args.append('--window-position=-32000,-32000')
+            if user_data_dir:
+                context = pw.chromium.launch_persistent_context(
+                    user_data_dir,
+                    headless=headless,
+                    args=args,
+                    viewport=None,
+                    ignore_https_errors=True,
+                )
+                browser = None
+            else:
+                browser = pw.chromium.launch(headless=headless, args=args)
+                context = browser.new_context(viewport=None, ignore_https_errors=True)
+            context.on('dialog', lambda dialog: dialog.accept())
+            page = context.pages[0] if context.pages else context.new_page()
+            page.set_default_timeout(timeout_ms)
+            return {
+                'playwright': pw,
+                'browser': browser,
+                'context': context,
+                'page': page,
+            }
+        except Exception as exc:
+            PlaywrightManager.safe_close_browser_session(
+                {'playwright': pw, 'browser': browser, 'context': context}
             )
-            browser = None
-        else:
-            browser = pw.chromium.launch(headless=headless, args=args)
-            context = browser.new_context(viewport=None, ignore_https_errors=True)
-        context.on('dialog', lambda dialog: dialog.accept())
-        page = context.pages[0] if context.pages else context.new_page()
-        page.set_default_timeout(timeout_ms)
-        return {'playwright': pw, 'browser': browser, 'context': context, 'page': page}
+            raise RuntimeError(_playwright_launch_error_message(exc)) from exc
 
     @staticmethod
     def safe_close_browser_session(session) -> None:

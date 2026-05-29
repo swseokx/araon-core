@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "araon-core"
-version = "1.0.0"
+version = "1.0.1"
 description = "Shared runtime library for ARAON desktop tools"
 readme = "README.md"
 requires-python = ">=3.11"
