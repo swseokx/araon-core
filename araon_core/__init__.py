@@ -4,7 +4,7 @@
 araon_core 패키지.
 
 하이브리드 로딩 전략:
-- main.exe 빌드: 모든 의존성(gspread, selenium 등) 포함됨 → eager import 성공.
+- main.exe 빌드: 모든 의존성(gspread, playwright 등) 포함됨 → eager import 성공.
   PyInstaller 정적 분석이 서브모듈을 감지해 번들에 포함.
 - launcher.exe 빌드: gspread 등 제외 → sheet_manager import 실패(ImportError).
   except 블록으로 넘어가 필요한 건 __getattr__ 로 lazy import.
@@ -16,7 +16,6 @@ __all__ = [
     'ConfigManager',
     'LogManager',
     'SheetManager',
-    'SeleniumManager',
     'PlaywrightManager',
 ]
 
@@ -25,7 +24,6 @@ try:
     from .config_manager import ConfigManager          # noqa: F401
     from .log_manager import LogManager                # noqa: F401
     from .sheet_manager import SheetManager            # noqa: F401
-    from .selenium_manager import SeleniumManager      # noqa: F401
     from .playwright_manager import PlaywrightManager  # noqa: F401
 except ImportError:
     # launcher 등 일부 의존성 제외 빌드에선 실패할 수 있음 → lazy fallback
@@ -36,7 +34,6 @@ _LAZY_MAP = {
     'ConfigManager':   '.config_manager',
     'LogManager':      '.log_manager',
     'SheetManager':    '.sheet_manager',
-    'SeleniumManager': '.selenium_manager',
     'PlaywrightManager': '.playwright_manager',
 }
 

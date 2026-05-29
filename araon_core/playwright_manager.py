@@ -227,6 +227,51 @@ class PlaywrightLmsSession:
         frame = self._detail_frame()
         if frame is None:
             return False
+
+    def get_member_gb(self) -> str:
+        frame = self._detail_frame()
+        if frame is None:
+            return ''
+        try:
+            return (
+                frame.locator('#member_gb').evaluate(
+                    """el => {
+                        if (el.tagName && el.tagName.toLowerCase() === 'select') {
+                            const opt = el.options[el.selectedIndex];
+                            return (opt && opt.value) || el.value || '';
+                        }
+                        return el.value || '';
+                    }"""
+                ) or ''
+            ).strip()
+        except Exception:
+            return ''
+
+    def save_attendance(self, sdate: str, edate: str) -> bool:
+        frame = self._detail_frame()
+        if frame is None:
+            return False
+        try:
+            attend = frame.locator('#attend_yn').first
+            if attend.count() > 0 and not attend.is_checked():
+                attend.click()
+            frame.evaluate(
+                """([sdate, edate]) => {
+                    const s = document.getElementsByName('attend_Sdate');
+                    if (s.length) s[0].value = sdate;
+                    const e = document.getElementsByName('attend_Edate');
+                    if (e.length) e[0].value = edate;
+                }""",
+                [sdate, edate],
+            )
+            try:
+                frame.locator("input[type='button'][name='학생정보저장']").first.click()
+            except Exception:
+                frame.evaluate("() => { if (typeof Submit === 'function') Submit(); }")
+            self._require_page().wait_for_timeout(700)
+            return True
+        except Exception:
+            return False
         try:
             frame.locator('#qna_content').fill(text)
             for selector, value in [
@@ -247,6 +292,13 @@ class PlaywrightLmsSession:
             page.bring_to_front()
         except Exception:
             pass
+
+    @property
+    def url(self) -> str:
+        try:
+            return self._require_page().url or ''
+        except Exception:
+            return ''
 
     def close(self) -> None:
         for obj in (self.context, self.browser):
@@ -328,6 +380,63 @@ class PlaywrightManager:
         ).start()
         session.login()
         return session
+
+    @staticmethod
+    def create_browser_session(
+        *,
+        headless: bool = False,
+        background: bool = False,
+        user_data_dir: str | None = None,
+        timeout_ms: int = 10000,
+    ) -> dict[str, Any]:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise RuntimeError('Playwright 패키지가 설치되어 있지 않습니다.') from exc
+
+        pw = sync_playwright().start()
+        args = ['--disable-popup-blocking']
+        if background:
+            args.append('--window-position=-32000,-32000')
+        if user_data_dir:
+            context = pw.chromium.launch_persistent_context(
+                user_data_dir,
+                headless=headless,
+                args=args,
+                viewport=None,
+                ignore_https_errors=True,
+            )
+            browser = None
+        else:
+            browser = pw.chromium.launch(headless=headless, args=args)
+            context = browser.new_context(viewport=None, ignore_https_errors=True)
+        context.on('dialog', lambda dialog: dialog.accept())
+        page = context.pages[0] if context.pages else context.new_page()
+        page.set_default_timeout(timeout_ms)
+        return {'playwright': pw, 'browser': browser, 'context': context, 'page': page}
+
+    @staticmethod
+    def safe_close_browser_session(session) -> None:
+        if session is None:
+            return
+        try:
+            context = session.get('context')
+            if context:
+                context.close()
+        except Exception:
+            pass
+        try:
+            browser = session.get('browser')
+            if browser:
+                browser.close()
+        except Exception:
+            pass
+        try:
+            pw = session.get('playwright')
+            if pw:
+                pw.stop()
+        except Exception:
+            pass
 
     @staticmethod
     def safe_close(session) -> None:
